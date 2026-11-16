@@ -1,0 +1,13 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  application:
+    name: interview-orchestrator
+  r2dbc:
+    url: r2dbc:postgresql://${POSTGRES_HOST:localhost}:${POSTGRES_PORT:5432}/${POSTGRES_DB:interview_agent}
+    username: ${POSTGRES_USER:interview}
+    password: ${POSTGRES_PASSWORD:interview_pass}
+
+ai-service:
+  base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}

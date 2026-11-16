@@ -1,22 +1,70 @@
+x-postgres-env: &postgres-env
+  POSTGRES_DB: ${POSTGRES_DB:-interview_agent}
+  POSTGRES_USER: ${POSTGRES_USER:-interview}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-interview_pass}
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: interview-agent-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-interview}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-interview_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-interview_agent}
+      <<: *postgres-env
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-interview} -d ${POSTGRES_DB:-interview_agent}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: interview-agent-ai-service
+    restart: unless-stopped
+    network_mode: host # TODO: ollama on different server
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+    volumes:
+      - ./ai-service/app:/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    develop:
+      watch:
+        - action: rebuild
+          path: ./ai-service/requirements.txt
+
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    container_name: interview-agent-orchestrator
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ai-service:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      <<: *postgres-env
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      AI_SERVICE_BASE_URL: http://host.docker.internal:8000
+    ports:
+      - "8080:8080"
+    develop:
+      watch:
+        - action: rebuild
+          path: ./orchestrator/src
+        - action: rebuild
+          path: ./orchestrator/pom.xml
 
 volumes:
   postgres_data:

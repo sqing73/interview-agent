@@ -1,7 +1,6 @@
 """FastAPI application exposing OpenAPI docs and SSE streaming endpoints."""
 
 from collections.abc import AsyncIterator
-import json
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
@@ -9,19 +8,13 @@ import httpx
 
 from app.config import settings
 from app.ollama_client import check_ollama_health, stream_ollama_chat
-from app.schemas import GenerateStreamRequest, HealthResponse
+from app.schemas import GenerateStreamRequest, HealthResponse, StreamChunk
 
 app = FastAPI(
     title=settings.app_title,
     version=settings.app_version,
     description="Streaming LLM inference gateway backed by local Ollama.",
 )
-
-
-def _format_sse(data: dict[str, object], event: str | None = None) -> str:
-    """Format a JSON payload as a Server-Sent Events frame."""
-    prefix = f"event: {event}\n" if event else ""
-    return f"{prefix}data: {json.dumps(data)}\n\n"
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
@@ -42,7 +35,8 @@ async def health() -> HealthResponse:
     summary="Stream LLM response tokens over SSE",
     responses={
         200: {
-            "description": "Server-Sent Events stream of generated tokens.",
+            "description": "Server-Sent Events stream of StreamChunk payloads.",
+            "model": StreamChunk,
             "content": {"text/event-stream": {}},
         }
     },
@@ -57,10 +51,10 @@ async def generate_stream(request: GenerateStreamRequest) -> StreamingResponse:
                 model=request.model,
                 temperature=request.temperature,
             ):
-                yield _format_sse({"token": token})
-            yield _format_sse({"done": True})
+                yield StreamChunk(token=token).to_sse()
+            yield StreamChunk(done=True).to_sse()
         except (httpx.HTTPError, RuntimeError) as exc:
-            yield _format_sse({"error": str(exc)}, event="error")
+            yield StreamChunk(error=str(exc)).to_sse(event="error")
 
     return StreamingResponse(
         event_generator(),

@@ -52,3 +52,28 @@ class HealthResponse(BaseModel):
     ollama_url: str
     model: str
     ollama_reachable: bool
+
+
+class StreamChunk(BaseModel):
+    """Payload inside each Server-Sent Events (SSE) `data:` frame.
+
+    Mirrors Java's `AiStreamChunk(String token, Boolean done, String error)`.
+    """
+
+    token: str | None = Field(
+        default=None,
+        description="Next generated text token from the LLM.",
+    )
+    done: bool | None = Field(
+        default=None,
+        description="True on the final frame when generation completes.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message if upstream LLM generation failed.",
+    )
+
+    def to_sse(self, event: Literal["error"] | None = None) -> str:
+        """Serialize this chunk as a formatted SSE frame."""
+        prefix = f"event: {event}\n" if event else ""
+        return f"{prefix}data: {self.model_dump_json(exclude_none=True)}\n\n"
