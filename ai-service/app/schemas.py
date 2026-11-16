@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.config import settings
 from app.prompts import InterviewStage
 
 
@@ -40,7 +41,7 @@ class GenerateStreamRequest(BaseModel):
         description="Optional Ollama model override; defaults to configured OLLAMA_MODEL.",
     )
     temperature: float = Field(
-        default=0.7,
+        default=settings.default_chat_temperature,
         ge=0.0,
         le=2.0,
         description="Sampling temperature for generation.",
@@ -50,7 +51,7 @@ class GenerateStreamRequest(BaseModel):
         description="Optional interview stage; when set, injects stage system prompt.",
     )
     target_role: str = Field(
-        default="Software Engineer",
+        default=settings.default_target_role,
         description="Target job role for stage prompt rendering.",
     )
     resume_skills: list[str] | None = Field(
@@ -88,6 +89,26 @@ class ParseResumeResponse(BaseModel):
         default="",
         description="Concise 1-2 sentence summary of the candidate's experience.",
     )
+
+
+class OllamaOptions(BaseModel):
+    """Sampling options sent inside an Ollama /api/chat request."""
+
+    temperature: float = Field(
+        default=settings.default_chat_temperature,
+        ge=0.0,
+        le=2.0,
+    )
+
+
+class OllamaChatRequest(BaseModel):
+    """Upstream request payload for Ollama POST /api/chat."""
+
+    model: str
+    messages: list[ChatMessage]
+    stream: bool
+    format: Literal["json"] | None = None
+    options: OllamaOptions
 
 
 class HealthResponse(BaseModel):

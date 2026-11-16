@@ -17,6 +17,12 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5:7b"
     ollama_timeout_seconds: float = 120.0
+    ollama_connect_timeout_seconds: float = 10.0
+    ollama_health_timeout_seconds: float = 5.0
+
+    default_chat_temperature: float = 0.7
+    resume_parse_temperature: float = 0.1
+    default_target_role: str = "Software Engineer"
 
 
 settings = Settings()

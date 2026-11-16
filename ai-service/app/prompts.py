@@ -2,6 +2,8 @@
 
 from typing import Literal
 
+from app.config import settings
+
 InterviewStage = Literal["INTRO", "TECHNICAL", "BEHAVIORAL", "COMPLETED"]
 
 STAGE_PROMPT_TEMPLATES: dict[InterviewStage, str] = {
@@ -70,7 +72,7 @@ RESUME_PARSE_SYSTEM_PROMPT = (
 
 def build_stage_system_prompt(
     stage: InterviewStage,
-    target_role: str = "Software Engineer",
+    target_role: str = settings.default_target_role,
     resume_skills: list[str] | None = None,
     resume_summary: str | None = None,
 ) -> str:
