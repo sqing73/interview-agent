@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from app import main as app_main
+from app.schemas import ParseResumeResponse
 
 
 @pytest.mark.asyncio
@@ -59,3 +60,65 @@ async def test_generate_stream_sse(monkeypatch: pytest.MonkeyPatch) -> None:
         {"token": "!"},
         {"done": True},
     ]
+
+
+@pytest.mark.asyncio
+async def test_generate_stream_injects_stage_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_messages: list = []
+
+    async def fake_stream(
+        messages: list,
+        model: str | None = None,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[str]:
+        captured_messages.extend(messages)
+        yield "Question?"
+
+    monkeypatch.setattr(app_main, "stream_ollama_chat", fake_stream)
+
+    payload = {
+        "stage": "TECHNICAL",
+        "target_role": "Backend Engineer",
+        "resume_skills": ["Java 21", "Spring WebFlux"],
+        "resume_summary": "3 years of reactive Java development.",
+        "messages": [{"role": "user", "content": "Ready for technical round"}],
+    }
+    transport = httpx.ASGITransport(app=app_main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post("/api/v1/generate-stream", json=payload)
+
+    assert response.status_code == 200
+    assert len(captured_messages) == 2
+    assert captured_messages[0].role == "system"
+    assert "TECHNICAL DEEP-DIVE" in captured_messages[0].content
+    assert "Java 21, Spring WebFlux" in captured_messages[0].content
+    assert captured_messages[1].role == "user"
+
+
+@pytest.mark.asyncio
+async def test_parse_resume_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def fake_parse(
+        raw_text: str,
+        model: str | None = None,
+    ) -> ParseResumeResponse:
+        assert "Spring WebFlux" in raw_text
+        return ParseResumeResponse(
+            skills=["Java 21", "Spring WebFlux", "PostgreSQL"],
+            experience_summary="Backend engineer specializing in reactive Java systems.",
+        )
+
+    monkeypatch.setattr(app_main, "parse_resume_with_ollama", fake_parse)
+
+    transport = httpx.ASGITransport(app=app_main.app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/parse-resume",
+            json={"raw_text": "Experienced in Java 21, Spring WebFlux, and PostgreSQL."},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["skills"] == ["Java 21", "Spring WebFlux", "PostgreSQL"]
+    assert "reactive Java" in body["experience_summary"]

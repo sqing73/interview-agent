@@ -2,13 +2,25 @@
 
 from collections.abc import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 import httpx
 
 from app.config import settings
-from app.ollama_client import check_ollama_health, stream_ollama_chat
-from app.schemas import GenerateStreamRequest, HealthResponse, StreamChunk
+from app.ollama_client import (
+    check_ollama_health,
+    parse_resume_with_ollama,
+    stream_ollama_chat,
+)
+from app.prompts import build_stage_system_prompt
+from app.schemas import (
+    ChatMessage,
+    GenerateStreamRequest,
+    HealthResponse,
+    ParseResumeRequest,
+    ParseResumeResponse,
+    StreamChunk,
+)
 
 app = FastAPI(
     title=settings.app_title,
@@ -43,11 +55,24 @@ async def health() -> HealthResponse:
 )
 async def generate_stream(request: GenerateStreamRequest) -> StreamingResponse:
     """Stream generated tokens from Ollama as Server-Sent Events (SSE)."""
+    messages = list(request.messages)
+    if request.stage is not None:
+        system_prompt = build_stage_system_prompt(
+            stage=request.stage,
+            target_role=request.target_role,
+            resume_skills=request.resume_skills,
+            resume_summary=request.resume_summary,
+        )
+        non_system_messages = [m for m in messages if m.role != "system"]
+        messages = [
+            ChatMessage(role="system", content=system_prompt),
+            *non_system_messages,
+        ]
 
     async def event_generator() -> AsyncIterator[str]:
         try:
             async for token in stream_ollama_chat(
-                messages=request.messages,
+                messages=messages,
                 model=request.model,
                 temperature=request.temperature,
             ):
@@ -65,3 +90,23 @@ async def generate_stream(request: GenerateStreamRequest) -> StreamingResponse:
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post(
+    "/api/v1/parse-resume",
+    response_model=ParseResumeResponse,
+    tags=["resume"],
+    summary="Extract structured skills and summary from raw resume text",
+)
+async def parse_resume(request: ParseResumeRequest) -> ParseResumeResponse:
+    """Parse raw resume text into structured skills and experience summary via Ollama."""
+    try:
+        return await parse_resume_with_ollama(
+            raw_text=request.raw_text,
+            model=request.model,
+        )
+    except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Resume parsing failed: {exc}",
+        ) from exc

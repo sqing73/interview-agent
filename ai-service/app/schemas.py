@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.prompts import InterviewStage
+
 
 class ChatMessage(BaseModel):
     """A single turn in a conversation."""
@@ -42,6 +44,49 @@ class GenerateStreamRequest(BaseModel):
         ge=0.0,
         le=2.0,
         description="Sampling temperature for generation.",
+    )
+    stage: InterviewStage | None = Field(
+        default=None,
+        description="Optional interview stage; when set, injects stage system prompt.",
+    )
+    target_role: str = Field(
+        default="Software Engineer",
+        description="Target job role for stage prompt rendering.",
+    )
+    resume_skills: list[str] | None = Field(
+        default=None,
+        description="Extracted candidate skills injected into the stage prompt.",
+    )
+    resume_summary: str | None = Field(
+        default=None,
+        description="Short candidate experience summary injected into the stage prompt.",
+    )
+
+
+class ParseResumeRequest(BaseModel):
+    """Request payload for extracting structured skills from raw resume text."""
+
+    raw_text: str = Field(
+        ...,
+        min_length=10,
+        description="Plain text extracted from the candidate's uploaded resume.",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Optional Ollama model override.",
+    )
+
+
+class ParseResumeResponse(BaseModel):
+    """Structured skills and summary extracted from a resume."""
+
+    skills: list[str] = Field(
+        default_factory=list,
+        description="List of technical and domain skills extracted from the resume.",
+    )
+    experience_summary: str = Field(
+        default="",
+        description="Concise 1-2 sentence summary of the candidate's experience.",
     )
 
 
