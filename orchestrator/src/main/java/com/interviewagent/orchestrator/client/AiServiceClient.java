@@ -1,5 +1,7 @@
 package com.interviewagent.orchestrator.client;
 
+import com.interviewagent.orchestrator.dto.ResumeDtos.AiParseResumeRequest;
+import com.interviewagent.orchestrator.dto.ResumeDtos.AiParseResumeResponse;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiGenerateStreamRequest;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiMessagePayload;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiStreamChunk;
@@ -10,6 +12,7 @@ import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Component
 public class AiServiceClient {
@@ -34,5 +37,17 @@ public class AiServiceClient {
                 .retrieve()
                 .bodyToFlux(SSE_TYPE)
                 .mapNotNull(ServerSentEvent::data);
+    }
+
+    public Mono<AiParseResumeResponse> parseResume(String rawText) {
+        AiParseResumeRequest request = new AiParseResumeRequest(rawText);
+        return aiServiceWebClient
+                .post()
+                .uri("/api/v1/parse-resume")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(AiParseResumeResponse.class);
     }
 }
