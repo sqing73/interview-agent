@@ -11,3 +11,9 @@ spring:
 
 ai-service:
   base-url: ${AI_SERVICE_BASE_URL:http://localhost:8000}
+
+interview:
+  stage-questions:
+    intro: ${INTERVIEW_INTRO_QUESTIONS:1}
+    technical: ${INTERVIEW_TECHNICAL_QUESTIONS:1}
+    behavioral: ${INTERVIEW_BEHAVIORAL_QUESTIONS:1}

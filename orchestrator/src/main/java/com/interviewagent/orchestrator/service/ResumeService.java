@@ -69,6 +69,16 @@ public class ResumeService {
                 .map(this::toResponse);
     }
 
+    public Mono<StoredResumeMetadata> findResumeMetadata(UUID resumeId) {
+        if (resumeId == null) {
+            return Mono.just(new StoredResumeMetadata(Collections.emptyList(), ""));
+        }
+        return resumeRepository
+                .findById(resumeId)
+                .map(entity -> parseStoredJson(entity.getParsedMetadata()))
+                .defaultIfEmpty(new StoredResumeMetadata(Collections.emptyList(), ""));
+    }
+
     private Mono<byte[]> readFileBytes(FilePart filePart) {
         return DataBufferUtils.join(filePart.content())
                 .map(dataBuffer -> {

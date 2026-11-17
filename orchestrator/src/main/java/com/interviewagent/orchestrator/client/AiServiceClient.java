@@ -3,9 +3,7 @@ package com.interviewagent.orchestrator.client;
 import com.interviewagent.orchestrator.dto.ResumeDtos.AiParseResumeRequest;
 import com.interviewagent.orchestrator.dto.ResumeDtos.AiParseResumeResponse;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiGenerateStreamRequest;
-import com.interviewagent.orchestrator.dto.SessionDtos.AiMessagePayload;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiStreamChunk;
-import java.util.List;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -26,8 +24,7 @@ public class AiServiceClient {
         this.aiServiceWebClient = aiServiceWebClient;
     }
 
-    public Flux<AiStreamChunk> streamChat(List<AiMessagePayload> messages) {
-        AiGenerateStreamRequest request = new AiGenerateStreamRequest(messages);
+    public Flux<AiStreamChunk> streamChat(AiGenerateStreamRequest request) {
         return aiServiceWebClient
                 .post()
                 .uri("/api/v1/generate-stream")

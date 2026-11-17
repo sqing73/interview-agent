@@ -1,5 +1,7 @@
 package com.interviewagent.orchestrator.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.interviewagent.orchestrator.entity.ChatMessageEntity;
 import com.interviewagent.orchestrator.entity.InterviewSession;
 import com.interviewagent.orchestrator.entity.InterviewStage;
@@ -70,9 +72,16 @@ public final class SessionDtos {
     public record AiMessagePayload(String role, String content) {
     }
 
-    public record AiGenerateStreamRequest(List<AiMessagePayload> messages) {
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record AiGenerateStreamRequest(
+            List<AiMessagePayload> messages,
+            InterviewStage stage,
+            @JsonProperty("target_role") String targetRole,
+            @JsonProperty("resume_skills") List<String> resumeSkills,
+            @JsonProperty("resume_summary") String resumeSummary) {
     }
 
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     public record AiStreamChunk(String token, Boolean done, String error) {
     }
 }
