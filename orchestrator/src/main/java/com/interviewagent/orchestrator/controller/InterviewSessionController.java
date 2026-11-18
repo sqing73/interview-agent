@@ -35,7 +35,7 @@ public class InterviewSessionController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Mono<SessionResponse> createSession(
-            @RequestBody(required = false) CreateSessionRequest request) {
+            @Valid @RequestBody CreateSessionRequest request) {
         return sessionService.createSession(request);
     }
 

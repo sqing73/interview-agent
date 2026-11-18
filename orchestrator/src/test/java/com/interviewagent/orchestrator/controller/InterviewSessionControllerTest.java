@@ -35,10 +35,11 @@ class InterviewSessionControllerTest {
     @Test
     void createSessionReturnsCreatedSession() {
         UUID sessionId = UUID.randomUUID();
+        UUID resumeId = UUID.randomUUID();
         SessionResponse mockResponse = new SessionResponse(
                 sessionId,
                 InterviewSessionService.DEFAULT_DEMO_USER_ID,
-                null,
+                resumeId,
                 "Backend Engineer",
                 InterviewStage.INTRO,
                 0,
@@ -51,12 +52,13 @@ class InterviewSessionControllerTest {
                 .post()
                 .uri("/api/sessions")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(new CreateSessionRequest(null, null, "Backend Engineer"))
+                .bodyValue(new CreateSessionRequest(null, resumeId, "Backend Engineer"))
                 .exchange()
                 .expectStatus()
                 .isCreated()
                 .expectBody()
                 .jsonPath("$.id").isEqualTo(sessionId.toString())
+                .jsonPath("$.resumeId").isEqualTo(resumeId.toString())
                 .jsonPath("$.targetRole").isEqualTo("Backend Engineer")
                 .jsonPath("$.stage").isEqualTo("INTRO");
     }

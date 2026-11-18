@@ -7,6 +7,7 @@ import com.interviewagent.orchestrator.entity.InterviewSession;
 import com.interviewagent.orchestrator.entity.InterviewStage;
 import com.interviewagent.orchestrator.entity.MessageRole;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -18,6 +19,7 @@ public final class SessionDtos {
 
     public record CreateSessionRequest(
             UUID userId,
+            @NotNull(message = "resumeId is required to start an interview session")
             UUID resumeId,
             String targetRole) {
     }

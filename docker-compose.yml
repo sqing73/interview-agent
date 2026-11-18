@@ -66,5 +66,26 @@ services:
         - action: rebuild
           path: ./orchestrator/pom.xml
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: interview-agent-frontend
+    restart: unless-stopped
+    depends_on:
+      orchestrator:
+        condition: service_started
+    environment:
+      VITE_BACKEND_PROXY_TARGET: http://orchestrator:8080
+    volumes:
+      - ./frontend/src:/app/src
+    ports:
+      - "5173:5173"
+    develop:
+      watch:
+        - action: rebuild
+          path: ./frontend/package.json
+
 volumes:
   postgres_data:
