@@ -2,8 +2,10 @@ package com.interviewagent.orchestrator.client;
 
 import com.interviewagent.orchestrator.dto.ResumeDtos.AiParseResumeRequest;
 import com.interviewagent.orchestrator.dto.ResumeDtos.AiParseResumeResponse;
+import com.interviewagent.orchestrator.dto.SessionDtos.AiEvaluateSessionRequest;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiGenerateStreamRequest;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiStreamChunk;
+import com.interviewagent.orchestrator.dto.SessionDtos.EvaluationReport;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
@@ -46,5 +48,16 @@ public class AiServiceClient {
                 .bodyValue(request)
                 .retrieve()
                 .bodyToMono(AiParseResumeResponse.class);
+    }
+
+    public Mono<EvaluationReport> evaluateSession(AiEvaluateSessionRequest request) {
+        return aiServiceWebClient
+                .post()
+                .uri("/api/v1/evaluate-session")
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(EvaluationReport.class);
     }
 }

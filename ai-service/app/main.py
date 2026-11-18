@@ -9,12 +9,15 @@ import httpx
 from app.config import settings
 from app.ollama_client import (
     check_ollama_health,
+    evaluate_session_with_ollama,
     parse_resume_with_ollama,
     stream_ollama_chat,
 )
 from app.prompts import build_stage_system_prompt
 from app.schemas import (
     ChatMessage,
+    EvaluateSessionRequest,
+    EvaluateSessionResponse,
     GenerateStreamRequest,
     HealthResponse,
     ParseResumeRequest,
@@ -63,11 +66,20 @@ async def generate_stream(request: GenerateStreamRequest) -> StreamingResponse:
             resume_skills=request.resume_skills,
             resume_summary=request.resume_summary,
         )
-        non_system_messages = [m for m in messages if m.role != "system"]
-        messages = [
-            ChatMessage(role="system", content=system_prompt),
-            *non_system_messages,
-        ]
+        if request.stage == "COMPLETED":
+            messages = [
+                ChatMessage(role="system", content=system_prompt),
+                ChatMessage(
+                    role="user",
+                    content="The interview is complete. Please leave a brief closing thank-you note.",
+                ),
+            ]
+        else:
+            non_system_messages = [m for m in messages if m.role != "system"]
+            messages = [
+                ChatMessage(role="system", content=system_prompt),
+                *non_system_messages,
+            ]
 
     async def event_generator() -> AsyncIterator[str]:
         try:
@@ -109,4 +121,23 @@ async def parse_resume(request: ParseResumeRequest) -> ParseResumeResponse:
         raise HTTPException(
             status_code=502,
             detail=f"Resume parsing failed: {exc}",
+        ) from exc
+
+
+@app.post(
+    "/api/v1/evaluate-session",
+    response_model=EvaluateSessionResponse,
+    tags=["evaluation"],
+    summary="Evaluate a completed interview transcript and return a structured scorecard",
+)
+async def evaluate_session(
+    request: EvaluateSessionRequest,
+) -> EvaluateSessionResponse:
+    """Grade the candidate's interview transcript via Ollama JSON mode."""
+    try:
+        return await evaluate_session_with_ollama(request)
+    except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Session evaluation failed: {exc}",
         ) from exc

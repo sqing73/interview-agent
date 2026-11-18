@@ -8,8 +8,10 @@ import static org.mockito.Mockito.when;
 import com.interviewagent.orchestrator.client.AiServiceClient;
 import com.interviewagent.orchestrator.config.InterviewStageProperties;
 import com.interviewagent.orchestrator.dto.ResumeDtos.StoredResumeMetadata;
+import com.interviewagent.orchestrator.dto.SessionDtos.AiEvaluateSessionRequest;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiGenerateStreamRequest;
 import com.interviewagent.orchestrator.dto.SessionDtos.AiStreamChunk;
+import com.interviewagent.orchestrator.dto.SessionDtos.EvaluationReport;
 import com.interviewagent.orchestrator.entity.ChatMessageEntity;
 import com.interviewagent.orchestrator.entity.InterviewSession;
 import com.interviewagent.orchestrator.entity.InterviewStage;
@@ -127,5 +129,56 @@ class InterviewSessionServiceTest {
         assertThat(captured.targetRole()).isEqualTo("Senior Backend Engineer");
         assertThat(captured.resumeSkills()).containsExactly("Java 21", "Spring WebFlux");
         assertThat(captured.resumeSummary()).isEqualTo("Experienced in reactive Java.");
+    }
+
+    @Test
+    void generateAndPersistEvaluationSavesScorecardJson() {
+        UUID sessionId = UUID.randomUUID();
+        UUID resumeId = UUID.randomUUID();
+
+        InterviewSession session = new InterviewSession();
+        session.setId(sessionId);
+        session.setResumeId(resumeId);
+        session.setTargetRole("Backend Engineer");
+        session.setStage(InterviewStage.COMPLETED);
+        session.setTurnCount(6);
+
+        ChatMessageEntity userMsg = new ChatMessageEntity();
+        userMsg.setSessionId(sessionId);
+        userMsg.setRole(MessageRole.USER);
+        userMsg.setStage(InterviewStage.TECHNICAL);
+        userMsg.setContent("We used R2DBC for non-blocking database queries.");
+
+        EvaluationReport expectedReport = new EvaluationReport(
+                88,
+                90,
+                84,
+                87,
+                "HIRE",
+                List.of("Strong R2DBC and reactive knowledge"),
+                List.of("Elaborate on connection pool sizing"),
+                "Solid candidate with clear reactive system experience.");
+
+        when(sessionRepository.findById(sessionId)).thenReturn(Mono.just(session));
+        when(messageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId))
+                .thenReturn(Flux.just(userMsg));
+        when(resumeService.findResumeMetadata(resumeId))
+                .thenReturn(Mono.just(new StoredResumeMetadata(
+                        List.of("Java 21", "Spring WebFlux"),
+                        "Backend engineer.")));
+        when(aiServiceClient.evaluateSession(any(AiEvaluateSessionRequest.class)))
+                .thenReturn(Mono.just(expectedReport));
+        when(sessionRepository.save(any(InterviewSession.class)))
+                .thenAnswer(inv -> Mono.just(inv.getArgument(0)));
+
+        StepVerifier.create(sessionService.generateAndPersistEvaluation(sessionId))
+                .assertNext(report -> {
+                    assertThat(report.overallScore()).isEqualTo(87);
+                    assertThat(report.recommendation()).isEqualTo("HIRE");
+                })
+                .verifyComplete();
+
+        assertThat(session.getEvaluationReport()).isNotNull();
+        assertThat(session.getEvaluationReport().asString()).contains("\"overall_score\":87");
     }
 }

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     default_chat_temperature: float = 0.7
     resume_parse_temperature: float = 0.1
+    ollama_repeat_penalty: float = 1.15
     default_target_role: str = "Software Engineer"
 
 

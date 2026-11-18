@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { Bot, Loader2, Send, Sparkles, User } from "lucide-react";
 import { useInterviewStream } from "../hooks/useInterviewStream";
+import { EvaluationScorecard } from "./EvaluationScorecard";
 import { StageStepper } from "./StageStepper";
 import type { ResumeResponse, SessionResponse } from "../types/interview";
 
@@ -24,6 +25,8 @@ export function ChatWorkspace({
     isStreaming,
     streamError,
     sendMessage,
+    completeInterview,
+    isCompleting,
   } = useInterviewStream(initialSession.id);
 
   const [input, setInput] = useState<string>("");
@@ -49,7 +52,13 @@ export function ChatWorkspace({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, streamingContent, optimisticUserMessage]);
+  }, [
+    messages.length,
+    streamingContent,
+    optimisticUserMessage,
+    activeSession.stage,
+    activeSession.evaluationReport,
+  ]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,6 +85,8 @@ export function ChatWorkspace({
         currentStage={activeSession.stage}
         turnCount={activeSession.turnCount}
         targetRole={activeSession.targetRole}
+        onCompleteSession={completeInterview}
+        isCompleting={isCompleting}
         onResetSession={onResetSession}
       />
 
@@ -192,6 +203,13 @@ export function ChatWorkspace({
             <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">
               Stream error: {streamError}
             </div>
+          )}
+
+          {activeSession.stage === "COMPLETED" && !isStreaming && (
+            <EvaluationScorecard
+              report={activeSession.evaluationReport}
+              targetRole={activeSession.targetRole}
+            />
           )}
 
           <div ref={bottomRef} />

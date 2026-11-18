@@ -91,11 +91,87 @@ class ParseResumeResponse(BaseModel):
     )
 
 
+class EvaluateSessionRequest(BaseModel):
+    """Request payload for post-interview transcript evaluation."""
+
+    messages: list[ChatMessage] = Field(
+        ...,
+        min_length=1,
+        description="Full ordered conversation transcript to evaluate.",
+    )
+    target_role: str = Field(
+        default=settings.default_target_role,
+        description="Target job role the candidate interviewed for.",
+    )
+    resume_skills: list[str] | None = Field(
+        default=None,
+        description="Extracted candidate resume skills for context.",
+    )
+    resume_summary: str | None = Field(
+        default=None,
+        description="Extracted candidate resume summary for context.",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Optional Ollama model override.",
+    )
+
+
+class EvaluateSessionResponse(BaseModel):
+    """Structured evaluation scorecard returned after an interview ends."""
+
+    technical_score: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Technical depth score (0-100).",
+    )
+    communication_score: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Communication clarity & structure score (0-100).",
+    )
+    problem_solving_score: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Problem-solving and analytical reasoning score (0-100).",
+    )
+    overall_score: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Weighted overall interview score (0-100).",
+    )
+    recommendation: Literal["STRONG_HIRE", "HIRE", "LEAN_HIRE", "NO_HIRE"] = Field(
+        default="LEAN_HIRE",
+        description="Hiring committee recommendation tier.",
+    )
+    strengths: list[str] = Field(
+        default_factory=list,
+        description="Key strengths demonstrated during the interview.",
+    )
+    areas_for_improvement: list[str] = Field(
+        default_factory=list,
+        description="Specific gaps or areas for improvement.",
+    )
+    summary: str = Field(
+        default="",
+        description="2-3 sentence executive summary of the candidate's performance.",
+    )
+
+
 class OllamaOptions(BaseModel):
     """Sampling options sent inside an Ollama /api/chat request."""
 
     temperature: float = Field(
         default=settings.default_chat_temperature,
+        ge=0.0,
+        le=2.0,
+    )
+    repeat_penalty: float = Field(
+        default=settings.ollama_repeat_penalty,
         ge=0.0,
         le=2.0,
     )

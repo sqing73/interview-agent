@@ -58,4 +58,9 @@ public class InterviewSessionController {
             @Valid @RequestBody SendMessageRequest request) {
         return sessionService.streamCandidateMessage(sessionId, request.content());
     }
+
+    @PostMapping("/{id}/complete")
+    public Mono<SessionResponse> completeSession(@PathVariable("id") UUID sessionId) {
+        return sessionService.completeSession(sessionId);
+    }
 }

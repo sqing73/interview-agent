@@ -24,6 +24,17 @@ public final class SessionDtos {
             String targetRole) {
     }
 
+    public record EvaluationReport(
+            @JsonProperty("technical_score") int technicalScore,
+            @JsonProperty("communication_score") int communicationScore,
+            @JsonProperty("problem_solving_score") int problemSolvingScore,
+            @JsonProperty("overall_score") int overallScore,
+            String recommendation,
+            List<String> strengths,
+            @JsonProperty("areas_for_improvement") List<String> areasForImprovement,
+            String summary) {
+    }
+
     public record SessionResponse(
             UUID id,
             UUID userId,
@@ -31,10 +42,17 @@ public final class SessionDtos {
             String targetRole,
             InterviewStage stage,
             int turnCount,
+            EvaluationReport evaluationReport,
             OffsetDateTime createdAt,
-            OffsetDateTime updatedAt) {
+            OffsetDateTime updatedAt,
+            OffsetDateTime completedAt) {
 
         public static SessionResponse fromEntity(InterviewSession session) {
+            return fromEntity(session, null);
+        }
+
+        public static SessionResponse fromEntity(
+                InterviewSession session, EvaluationReport evaluationReport) {
             return new SessionResponse(
                     session.getId(),
                     session.getUserId(),
@@ -42,8 +60,10 @@ public final class SessionDtos {
                     session.getTargetRole(),
                     session.getStage(),
                     session.getTurnCount(),
+                    evaluationReport,
                     session.getCreatedAt(),
-                    session.getUpdatedAt());
+                    session.getUpdatedAt(),
+                    session.getCompletedAt());
         }
     }
 
@@ -78,6 +98,14 @@ public final class SessionDtos {
     public record AiGenerateStreamRequest(
             List<AiMessagePayload> messages,
             InterviewStage stage,
+            @JsonProperty("target_role") String targetRole,
+            @JsonProperty("resume_skills") List<String> resumeSkills,
+            @JsonProperty("resume_summary") String resumeSummary) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record AiEvaluateSessionRequest(
+            List<AiMessagePayload> messages,
             @JsonProperty("target_role") String targetRole,
             @JsonProperty("resume_skills") List<String> resumeSkills,
             @JsonProperty("resume_summary") String resumeSummary) {

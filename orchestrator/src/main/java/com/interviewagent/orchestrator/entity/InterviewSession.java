@@ -1,5 +1,6 @@
 package com.interviewagent.orchestrator.entity;
 
+import io.r2dbc.postgresql.codec.Json;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 import org.springframework.data.annotation.Id;
@@ -26,6 +27,9 @@ public class InterviewSession {
 
     @Column("turn_count")
     private int turnCount = 0;
+
+    @Column("evaluation_report")
+    private Json evaluationReport;
 
     @Column("created_at")
     private OffsetDateTime createdAt;
@@ -106,5 +110,13 @@ public class InterviewSession {
 
     public void setCompletedAt(OffsetDateTime completedAt) {
         this.completedAt = completedAt;
+    }
+
+    public Json getEvaluationReport() {
+        return evaluationReport;
+    }
+
+    public void setEvaluationReport(Json evaluationReport) {
+        this.evaluationReport = evaluationReport;
     }
 }

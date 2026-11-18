@@ -12,6 +12,8 @@ interface StageStepperProps {
   currentStage: InterviewStage;
   turnCount: number;
   targetRole: string;
+  onCompleteSession: () => void;
+  isCompleting: boolean;
   onResetSession: () => void;
 }
 
@@ -19,6 +21,8 @@ export function StageStepper({
   currentStage,
   turnCount,
   targetRole,
+  onCompleteSession,
+  isCompleting,
   onResetSession,
 }: StageStepperProps) {
   const activeIdx = STAGES.findIndex((s) => s.key === currentStage);
@@ -78,13 +82,25 @@ export function StageStepper({
           })}
         </nav>
 
-        <button
-          type="button"
-          onClick={onResetSession}
-          className="text-xs text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 transition-colors self-start md:self-auto cursor-pointer"
-        >
-          New Session
-        </button>
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          {currentStage !== "COMPLETED" && turnCount > 0 && (
+            <button
+              type="button"
+              onClick={onCompleteSession}
+              disabled={isCompleting}
+              className="text-xs font-medium text-indigo-700 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50 px-3 py-1.5 rounded-lg border border-indigo-200 transition-colors cursor-pointer"
+            >
+              {isCompleting ? "Ending..." : "End & Evaluate"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onResetSession}
+            className="text-xs text-slate-600 hover:text-slate-900 bg-white hover:bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 transition-colors cursor-pointer"
+          >
+            New Session
+          </button>
+        </div>
       </div>
     </header>
   );

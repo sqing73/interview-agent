@@ -50,6 +50,24 @@ export async function getSession(sessionId: string): Promise<SessionResponse> {
   return response.json() as Promise<SessionResponse>;
 }
 
+export async function completeSession(
+  sessionId: string
+): Promise<SessionResponse> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/sessions/${sessionId}/complete`,
+    {
+      method: "POST",
+    }
+  );
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Failed to complete session (HTTP ${response.status})`
+    );
+  }
+  return response.json() as Promise<SessionResponse>;
+}
+
 export async function getMessages(sessionId: string): Promise<MessageResponse[]> {
   const response = await fetch(`${API_BASE_URL}/api/sessions/${sessionId}/messages`);
   if (!response.ok) {

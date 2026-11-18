@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  completeSession,
   getMessages,
   getSession,
   streamCandidateMessage,
@@ -19,6 +20,20 @@ export function useInterviewStream(sessionId: string) {
   const sessionQuery = useQuery({
     queryKey: ["session", sessionId],
     queryFn: () => getSession(sessionId),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (data?.stage === "COMPLETED" && !data.evaluationReport) {
+        return 2500;
+      }
+      return false;
+    },
+  });
+
+  const completeMutation = useMutation({
+    mutationFn: () => completeSession(sessionId),
+    onSuccess: (updatedSession) => {
+      queryClient.setQueryData(["session", sessionId], updatedSession);
+    },
   });
 
   const messagesQuery = useQuery({
@@ -80,5 +95,7 @@ export function useInterviewStream(sessionId: string) {
     isStreaming,
     streamError,
     sendMessage,
+    completeInterview: () => completeMutation.mutate(),
+    isCompleting: completeMutation.isPending,
   };
 }

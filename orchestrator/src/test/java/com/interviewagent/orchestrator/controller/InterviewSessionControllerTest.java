@@ -43,8 +43,10 @@ class InterviewSessionControllerTest {
                 "Backend Engineer",
                 InterviewStage.INTRO,
                 0,
+                null,
                 OffsetDateTime.now(),
-                OffsetDateTime.now());
+                OffsetDateTime.now(),
+                null);
 
         when(sessionService.createSession(any())).thenReturn(Mono.just(mockResponse));
 
