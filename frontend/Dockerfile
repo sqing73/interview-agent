@@ -15,6 +15,8 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
 
 # Stage 2: Production static bundle build
 FROM dev AS build
+ARG VITE_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=/v1/traces
+ENV VITE_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=$VITE_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
 RUN npm run build
 
 # Stage 3: Lightweight Nginx runtime for Kubernetes / production
