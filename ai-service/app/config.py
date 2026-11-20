@@ -25,5 +25,9 @@ class Settings(BaseSettings):
     ollama_repeat_penalty: float = 1.15
     default_target_role: str = "Software Engineer"
 
+    otel_enabled: bool = True
+    otel_service_name: str = "interview-ai-service"
+    otel_exporter_otlp_traces_endpoint: str = "http://localhost:4318/v1/traces"
+
 
 settings = Settings()

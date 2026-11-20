@@ -17,3 +17,24 @@ interview:
     intro: ${INTERVIEW_INTRO_QUESTIONS:1}
     technical: ${INTERVIEW_TECHNICAL_QUESTIONS:1}
     behavioral: ${INTERVIEW_BEHAVIORAL_QUESTIONS:1}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+  metrics:
+    distribution:
+      percentiles-histogram:
+        interview.llm.ttft: true
+        interview.llm.stream.duration: true
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"

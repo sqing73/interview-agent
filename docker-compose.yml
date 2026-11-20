@@ -31,6 +31,8 @@ services:
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      OTEL_SERVICE_NAME: interview-ai-service
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://localhost:4318/v1/traces
     volumes:
       - ./ai-service/app:/app/app
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
@@ -57,6 +59,7 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       AI_SERVICE_BASE_URL: http://host.docker.internal:8000
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
     ports:
       - "8080:8080"
     develop:
@@ -86,6 +89,40 @@ services:
       watch:
         - action: rebuild
           path: ./frontend/package.json
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.63.0
+    container_name: interview-agent-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.114.0
+    container_name: interview-agent-otel-collector
+    restart: unless-stopped
+    depends_on:
+      - jaeger
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./infra/otel/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: interview-agent-prometheus
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
 
 volumes:
   postgres_data:

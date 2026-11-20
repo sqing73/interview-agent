@@ -19,11 +19,19 @@ import com.interviewagent.orchestrator.entity.InterviewStage;
 import com.interviewagent.orchestrator.entity.MessageRole;
 import com.interviewagent.orchestrator.repository.ChatMessageRepository;
 import com.interviewagent.orchestrator.repository.InterviewSessionRepository;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import io.r2dbc.postgresql.codec.Json;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +58,9 @@ public class InterviewSessionService {
     private final AiServiceClient aiServiceClient;
     private final InterviewStageProperties stageProperties;
     private final ObjectMapper objectMapper;
+    private final MeterRegistry meterRegistry;
+    private final Tracer tracer;
+    private final AtomicInteger activeSseConnections = new AtomicInteger(0);
 
     public InterviewSessionService(
             InterviewSessionRepository sessionRepository,
@@ -63,7 +74,9 @@ public class InterviewSessionService {
                 resumeService,
                 aiServiceClient,
                 stageProperties,
-                new ObjectMapper());
+                new ObjectMapper(),
+                new SimpleMeterRegistry(),
+                Tracer.NOOP);
     }
 
     @Autowired
@@ -73,13 +86,20 @@ public class InterviewSessionService {
             ResumeService resumeService,
             AiServiceClient aiServiceClient,
             InterviewStageProperties stageProperties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            MeterRegistry meterRegistry,
+            Tracer tracer) {
         this.sessionRepository = sessionRepository;
         this.messageRepository = messageRepository;
         this.resumeService = resumeService;
         this.aiServiceClient = aiServiceClient;
         this.stageProperties = stageProperties;
         this.objectMapper = objectMapper;
+        this.meterRegistry = meterRegistry;
+        this.tracer = tracer;
+        Gauge.builder("interview.sse.active", activeSseConnections, AtomicInteger::get)
+                .description("Number of active SSE interview chat streams")
+                .register(meterRegistry);
     }
 
     @Transactional
@@ -155,96 +175,129 @@ public class InterviewSessionService {
 
     public Flux<ServerSentEvent<AiStreamChunk>> streamCandidateMessage(
             UUID sessionId, String userContent) {
+        String traceId = currentTraceId();
         return sessionRepository
                 .findById(sessionId)
                 .switchIfEmpty(Mono.error(new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Interview session not found: " + sessionId)))
-                .flatMap(session -> {
-                    int nextTurnCount = session.getTurnCount() + 1;
-                    InterviewStage activeStage = resolveNextStage(
-                            session.getStage(), nextTurnCount);
+                .flatMap(session -> recordCandidateTurn(session, userContent, traceId))
+                .flatMapMany(session -> streamAiReplyForSession(session, traceId));
+    }
 
-                    ChatMessageEntity userMessage = new ChatMessageEntity();
-                    userMessage.setSessionId(sessionId);
-                    userMessage.setRole(MessageRole.USER);
-                    userMessage.setStage(activeStage);
-                    userMessage.setContent(userContent);
-                    userMessage.setCreatedAt(OffsetDateTime.now());
+    private Mono<InterviewSession> recordCandidateTurn(
+            InterviewSession session, String userContent, String traceId) {
+        int nextTurnCount = session.getTurnCount() + 1;
+        InterviewStage activeStage = resolveNextStage(session.getStage(), nextTurnCount);
+        OffsetDateTime now = OffsetDateTime.now();
 
-                    session.setTurnCount(nextTurnCount);
-                    session.setStage(activeStage);
-                    OffsetDateTime now = OffsetDateTime.now();
-                    session.setUpdatedAt(now);
-                    if (activeStage == InterviewStage.COMPLETED && session.getCompletedAt() == null) {
-                        session.setCompletedAt(now);
-                    }
+        ChatMessageEntity userMessage = new ChatMessageEntity();
+        userMessage.setSessionId(session.getId());
+        userMessage.setRole(MessageRole.USER);
+        userMessage.setStage(activeStage);
+        userMessage.setContent(userContent);
+        userMessage.setTraceId(traceId);
+        userMessage.setCreatedAt(now);
 
-                    return messageRepository
-                            .save(userMessage)
-                            .then(sessionRepository.save(session));
-                })
-                .flatMapMany(session -> {
-                    Mono<List<AiMessagePayload>> historyMono = messageRepository
-                            .findBySessionIdOrderByCreatedAtAsc(sessionId)
-                            .filter(msg -> msg.getRole() != MessageRole.SYSTEM)
-                            .map(msg -> new AiMessagePayload(
-                                    msg.getRole().name().toLowerCase(Locale.ROOT),
-                                    msg.getContent()))
-                            .collectList();
+        session.setTurnCount(nextTurnCount);
+        session.setStage(activeStage);
+        session.setUpdatedAt(now);
+        if (activeStage == InterviewStage.COMPLETED && session.getCompletedAt() == null) {
+            session.setCompletedAt(now);
+        }
 
-                    Mono<StoredResumeMetadata> resumeMono = resumeService
-                            .findResumeMetadata(session.getResumeId());
+        return messageRepository
+                .save(userMessage)
+                .then(sessionRepository.save(session));
+    }
 
-                    return Mono.zip(historyMono, resumeMono)
-                            .flatMapMany(tuple -> {
-                                List<AiMessagePayload> history = tuple.getT1();
-                                StoredResumeMetadata resumeMeta = tuple.getT2();
+    private Flux<ServerSentEvent<AiStreamChunk>> streamAiReplyForSession(
+            InterviewSession session, String traceId) {
+        Mono<List<AiMessagePayload>> historyMono = loadConversationHistory(session.getId());
+        Mono<StoredResumeMetadata> resumeMono = resumeService
+                .findResumeMetadata(session.getResumeId());
 
-                                AiGenerateStreamRequest aiRequest = new AiGenerateStreamRequest(
-                                        history,
-                                        session.getStage(),
-                                        session.getTargetRole(),
-                                        resumeMeta.skills(),
-                                        resumeMeta.experienceSummary());
-
-                                StringBuilder assistantBuffer = new StringBuilder();
-
-                                Flux<AiStreamChunk> tokenStream = aiServiceClient
-                                        .streamChat(aiRequest)
-                                        .doOnNext(chunk -> {
-                                            if (chunk.token() != null) {
-                                                assistantBuffer.append(chunk.token());
-                                            }
-                                        });
-
-                                Mono<Void> persistAssistantMono = Mono.defer(() -> {
-                                    String fullReply = assistantBuffer.toString();
-                                    if (fullReply.isEmpty()) {
-                                        return Mono.empty();
-                                    }
-                                    ChatMessageEntity assistantMessage = new ChatMessageEntity();
-                                    assistantMessage.setSessionId(sessionId);
-                                    assistantMessage.setRole(MessageRole.ASSISTANT);
-                                    assistantMessage.setStage(session.getStage());
-                                    assistantMessage.setContent(fullReply);
-                                    assistantMessage.setCreatedAt(OffsetDateTime.now());
-                                    return messageRepository
-                                            .save(assistantMessage)
-                                            .doOnSuccess(ignored -> {
-                                                if (session.getStage() == InterviewStage.COMPLETED) {
-                                                    triggerAsyncEvaluation(sessionId);
-                                                }
-                                            })
-                                            .then();
-                                });
-
-                                return tokenStream
-                                        .map(chunk -> ServerSentEvent.<AiStreamChunk>builder()
-                                                .data(chunk)
-                                                .build())
-                                        .concatWith(persistAssistantMono.then(Mono.empty()));
-                            });
+        return Mono.zip(historyMono, resumeMono)
+                .flatMapMany(tuple -> {
+                    AiGenerateStreamRequest aiRequest = new AiGenerateStreamRequest(
+                            tuple.getT1(),
+                            session.getStage(),
+                            session.getTargetRole(),
+                            tuple.getT2().skills(),
+                            tuple.getT2().experienceSummary());
+                    return streamAndPersistReply(session, aiRequest, traceId);
                 });
+    }
+
+    private Flux<ServerSentEvent<AiStreamChunk>> streamAndPersistReply(
+            InterviewSession session, AiGenerateStreamRequest aiRequest, String traceId) {
+        StringBuilder assistantBuffer = new StringBuilder();
+        Timer.Sample ttftSample = Timer.start(meterRegistry);
+        Timer.Sample totalStreamSample = Timer.start(meterRegistry);
+        AtomicBoolean firstTokenRecorded = new AtomicBoolean(false);
+        String stageTag = session.getStage().name();
+
+        Flux<AiStreamChunk> tokenStream = aiServiceClient
+                .streamChat(aiRequest)
+                .doOnSubscribe(ignored -> activeSseConnections.incrementAndGet())
+                .doOnNext(chunk -> {
+                    if (chunk.token() != null && !chunk.token().isEmpty()) {
+                        if (firstTokenRecorded.compareAndSet(false, true)) {
+                            ttftSample.stop(Timer.builder("interview.llm.ttft")
+                                    .description("Time to first token from ai-service")
+                                    .tag("stage", stageTag)
+                                    .register(meterRegistry));
+                        }
+                        assistantBuffer.append(chunk.token());
+                    }
+                })
+                .doFinally(signalType -> {
+                    activeSseConnections.decrementAndGet();
+                    totalStreamSample.stop(Timer.builder("interview.llm.stream.duration")
+                            .description("Total SSE LLM stream duration")
+                            .tag("stage", stageTag)
+                            .register(meterRegistry));
+                });
+
+        Mono<Void> persistAssistantMono = Mono.defer(
+                () -> persistAssistantReply(session, assistantBuffer.toString(), traceId));
+
+        return tokenStream
+                .map(chunk -> ServerSentEvent.<AiStreamChunk>builder()
+                        .data(chunk)
+                        .build())
+                .concatWith(persistAssistantMono.then(Mono.empty()));
+    }
+
+    private Mono<Void> persistAssistantReply(
+            InterviewSession session, String fullReply, String traceId) {
+        if (fullReply.isEmpty()) {
+            return Mono.empty();
+        }
+        ChatMessageEntity assistantMessage = new ChatMessageEntity();
+        assistantMessage.setSessionId(session.getId());
+        assistantMessage.setRole(MessageRole.ASSISTANT);
+        assistantMessage.setStage(session.getStage());
+        assistantMessage.setContent(fullReply);
+        assistantMessage.setTraceId(traceId);
+        assistantMessage.setCreatedAt(OffsetDateTime.now());
+        return messageRepository
+                .save(assistantMessage)
+                .doOnSuccess(ignored -> {
+                    if (session.getStage() == InterviewStage.COMPLETED) {
+                        triggerAsyncEvaluation(session.getId());
+                    }
+                })
+                .then();
+    }
+
+    private Mono<List<AiMessagePayload>> loadConversationHistory(UUID sessionId) {
+        return messageRepository
+                .findBySessionIdOrderByCreatedAtAsc(sessionId)
+                .filter(msg -> msg.getRole() != MessageRole.SYSTEM)
+                .map(msg -> new AiMessagePayload(
+                        msg.getRole().name().toLowerCase(Locale.ROOT),
+                        msg.getContent()))
+                .collectList();
     }
 
     InterviewStage resolveNextStage(InterviewStage currentStage, int turnCount) {
@@ -287,13 +340,7 @@ public class InterviewSessionService {
         return sessionRepository
                 .findById(sessionId)
                 .flatMap(session -> {
-                    Mono<List<AiMessagePayload>> historyMono = messageRepository
-                            .findBySessionIdOrderByCreatedAtAsc(sessionId)
-                            .filter(msg -> msg.getRole() != MessageRole.SYSTEM)
-                            .map(msg -> new AiMessagePayload(
-                                    msg.getRole().name().toLowerCase(Locale.ROOT),
-                                    msg.getContent()))
-                            .collectList();
+                    Mono<List<AiMessagePayload>> historyMono = loadConversationHistory(sessionId);
 
                     Mono<StoredResumeMetadata> resumeMono = resumeService
                             .findResumeMetadata(session.getResumeId());
@@ -353,5 +400,10 @@ public class InterviewSessionService {
             log.warn("Failed to deserialize EvaluationReport JSON", e);
             return null;
         }
+    }
+
+    private String currentTraceId() {
+        Span currentSpan = tracer.currentSpan();
+        return currentSpan != null ? currentSpan.context().traceId() : null;
     }
 }

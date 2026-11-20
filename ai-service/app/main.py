@@ -24,12 +24,14 @@ from app.schemas import (
     ParseResumeResponse,
     StreamChunk,
 )
+from app.telemetry import configure_telemetry
 
 app = FastAPI(
     title=settings.app_title,
     version=settings.app_version,
     description="Streaming LLM inference gateway backed by local Ollama.",
 )
+configure_telemetry(app)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
