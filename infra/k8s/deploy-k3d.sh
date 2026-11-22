@@ -5,13 +5,55 @@ CLUSTER_NAME="interview-agent"
 NAMESPACE="interview-agent"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [--stop|-s] [--help|-h]
+
+Options:
+  (default)     Create/start k3d cluster '${CLUSTER_NAME}', build & import images, and deploy workloads.
+  --stop, -s    Stop k3d cluster '${CLUSTER_NAME}' (preserves cluster state and Postgres PVC).
+  --help, -h    Show this help message.
+EOF
+}
+
+ACTION="deploy"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --stop|-s)
+      ACTION="stop"
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "${ACTION}" == "stop" ]]; then
+  if k3d cluster list -o json | grep -q "\"name\":\"${CLUSTER_NAME}\""; then
+    echo "==> Stopping k3d cluster '${CLUSTER_NAME}'..."
+    k3d cluster stop "${CLUSTER_NAME}"
+    echo "==> Cluster '${CLUSTER_NAME}' stopped (Postgres PVC and cluster state preserved)."
+  else
+    echo "==> Cluster '${CLUSTER_NAME}' does not exist; nothing to stop."
+  fi
+  exit 0
+fi
+
 echo "==> 1. Ensuring multi-node k3d cluster '${CLUSTER_NAME}' exists (1 server + 2 agents)..."
 if ! k3d cluster list -o json | grep -q "\"name\":\"${CLUSTER_NAME}\""; then
   k3d cluster create "${CLUSTER_NAME}" \
     --agents 2 \
     -p "8088:80@loadbalancer"
 else
-  echo "    Cluster '${CLUSTER_NAME}' already exists, switching kubeconfig..."
+  echo "    Cluster '${CLUSTER_NAME}' already exists, ensuring it is started and switching kubeconfig..."
+  k3d cluster start "${CLUSTER_NAME}"
   k3d kubeconfig merge "${CLUSTER_NAME}" --kubeconfig-switch-context
 fi
 
