@@ -27,20 +27,36 @@ k3d image import \
   interview-agent/frontend:latest \
   -c "${CLUSTER_NAME}"
 
-echo "==> 4. Applying namespace, secrets, configmaps, and Postgres init.sql..."
-kubectl apply -f "${ROOT_DIR}/infra/k8s/00-namespace-config.yaml"
+echo "==> 4. Applying namespace, secrets, configmaps, host Ollama service, and Postgres init.sql..."
+kubectl apply -f "${ROOT_DIR}/infra/k8s/namespace-config.yaml"
+HOST_GATEWAY_IP="$(docker network inspect "k3d-${CLUSTER_NAME}" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}')"
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: ollama-host
+  namespace: ${NAMESPACE}
+subsets:
+  - addresses:
+      - ip: ${HOST_GATEWAY_IP}
+    ports:
+      - name: http
+        port: 11434
+EOF
 kubectl create configmap postgres-init-sql \
   --namespace "${NAMESPACE}" \
   --from-file=01-init.sql="${ROOT_DIR}/infra/postgres/init.sql" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 echo "==> 5. Applying Kubernetes workloads & Traefik Ingress..."
-kubectl apply -f "${ROOT_DIR}/infra/k8s/01-postgres.yaml"
-kubectl apply -f "${ROOT_DIR}/infra/k8s/02-observability.yaml"
-kubectl apply -f "${ROOT_DIR}/infra/k8s/03-ai-service.yaml"
-kubectl apply -f "${ROOT_DIR}/infra/k8s/04-orchestrator.yaml"
-kubectl apply -f "${ROOT_DIR}/infra/k8s/05-frontend.yaml"
-kubectl apply -f "${ROOT_DIR}/infra/k8s/06-ingress.yaml"
+kubectl apply -f "${ROOT_DIR}/infra/k8s/postgres.yaml"
+kubectl apply -f "${ROOT_DIR}/infra/k8s/observability.yaml"
+kubectl apply -f "${ROOT_DIR}/infra/k8s/ollama-host.yaml"
+kubectl apply -f "${ROOT_DIR}/infra/k8s/ai-service.yaml"
+kubectl apply -f "${ROOT_DIR}/infra/k8s/orchestrator.yaml"
+kubectl apply -f "${ROOT_DIR}/infra/k8s/frontend.yaml"
+kubectl apply -f "${ROOT_DIR}/infra/k8s/ingress.yaml"
+kubectl rollout restart deployment/ai-service -n "${NAMESPACE}"
 
 echo "==> 6. Waiting for deployments to become ready..."
 for deploy in postgres jaeger otel-collector prometheus ai-service orchestrator frontend; do
@@ -53,6 +69,6 @@ kubectl get nodes -o wide
 echo ""
 kubectl get pods,svc,ingress,pvc -n "${NAMESPACE}" -o wide
 echo ""
-echo "App UI:       http://localhost:8088"
-echo "Jaeger UI:    kubectl port-forward -n ${NAMESPACE} svc/jaeger 16686:16686"
-echo "Prometheus:   kubectl port-forward -n ${NAMESPACE} svc/prometheus 9090:9090"
+echo "App UI:        http://localhost:8088"
+echo "Jaeger UI:     http://localhost:8088/jaeger/"
+echo "Prometheus UI: http://localhost:8088/prometheus/graph"

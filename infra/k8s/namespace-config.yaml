@@ -23,7 +23,7 @@ data:
   POSTGRES_HOST: postgres
   POSTGRES_PORT: "5432"
   AI_SERVICE_BASE_URL: http://ai-service:8000
-  OLLAMA_BASE_URL: http://host.k3d.internal:11434
+  OLLAMA_BASE_URL: http://ollama-host:11434
   OLLAMA_MODEL: qwen2.5:7b
   OTEL_SERVICE_NAME: interview-ai-service
   OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
